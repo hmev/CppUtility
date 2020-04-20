@@ -1,0 +1,18 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <ClInclude Include="OrderdList.h" />
+    <ClInclude Include="Manage.h" />
+    <ClInclude Include="IFactory.h" />
+    <ClInclude Include="Aspect.h" />
+    <ClInclude Include="Utility.hpp" />
+    <ClInclude Include="Dispatcher.hpp" />
+    <ClInclude Include="Guid.h" />
+    <ClInclude Include="NonCopyable.hpp" />
+    <ClInclude Include="IocContainer.hpp" />
+    <ClInclude Include="FunctionTraits.hpp" />
+    <ClInclude Include="MessageBus.hpp" />
+    <ClInclude Include="MessageQueue.hpp" />
+    <ClInclude Include="Nullable.hpp" />
+  </ItemGroup>
+</Project>
