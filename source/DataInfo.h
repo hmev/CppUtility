@@ -18,7 +18,7 @@ namespace utility
     public:
         std::string_view    status;
         InfoSetType         info;
-        int                 precision;@
+        int                 precision;
 
         DataInfo(const std::string_view& status);
         DataInfo(const std::string_view& status, const InfoSetType& info);
