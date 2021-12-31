@@ -10,6 +10,8 @@
 #include <thread>
 #include <condition_variable>
 
+#include "taskqueue.h"
+
 namespace utility {
     
     class ThreadPool {
@@ -29,15 +31,6 @@ namespace utility {
         void adjust(int capacity);
         void addThread();
         void addThreads(int nThread);
-
-        template <typename F, typename ...Ts>
-        void addTask(const F& f, Ts... args){
-            addTask(Task([&]{f(args...);}));
-        }
-        void addTask(Task&& task);
-        void addTasks(const std::vector<Task>& tasks);
-
-        Task fetchTask();
 
         template <typename F, typename ...Ts>
         void runTask(const F& f, Ts... args) {
@@ -84,7 +77,7 @@ namespace utility {
         std::mutex _mutex;
         std::condition_variable _condvar;
         std::list<std::thread> _pool;
-        std::queue<Task> _queue;
+        TaskQueue _taskQueue;
     };
 
     static ThreadPool& threadpool();

@@ -5,46 +5,84 @@
 
 namespace utility {
 
+    using uint = unsigned int;
+
     class ArrayMTHelper {
     public:
-
-        static void splitIndex(int dataSize, int numTask, int taskId, int& frIdx, int& toIdx) {
-            int taskSize = (dataSize + numTask - 1) / numTask;
-            frIdx = taskSize * taskId;
-            toIdx = std::min(int(taskSize * taskId + taskSize), dataSize);        
+        static void splitIndex(int dataSize, int numTask, int taskId, int& fr, int& to) {
+            int taskSize = getTaskSize(dataSize, numTask);
+            fr = taskSize * taskId;
+            to = std::min(int(taskSize * taskId + taskSize), dataSize);        
         }
 
         template <typename T, template <typename> class U>
-        static void splitRange(const U<T>& arr, int numTask, int taskId, typename U<T>::iterator& l, typename U<T>::iterator& r) {
-            int dataSize = arr.size();
+        static void splitRange(const U<T>& container, int numTask, int taskId, typename U<T>::iterator& l, typename U<T>::iterator& r) {
+            int dataSize = container.size();
             int taskSize = (dataSize + numTask - 1) / numTask;
-            l = arr.begin() + taskSize * taskId;
-            r = arr.begin() + std::min(int(taskSize * taskId + taskSize), dataSize);   
+            l = container.begin() + taskSize * taskId;
+            r = container.begin() + std::min(int(taskSize * taskId + taskSize), dataSize);   
         }
 
-        static std::vector<int> splitIndexAll(int dataSize, int numTask) {
+        static auto splitIndexAll(int dataSize, int numTask) {
             std::vector<int> ranges;
-            ranges.resize(numTask*2);
-
+            ranges.resize(numTask+1);
+            int taskSize = getTaskSize(dataSize, numTask);
             for (auto i = 0; i < numTask; i++) {
-                splitIndex(dataSize, numTask, i, ranges[i*2], ranges[i*2+1]);
+                ranges[i] = taskSize * i;
             }
-            return std::move(ranges); 
+            ranges[numTask] = dataSize;
+            return ranges; 
         }
 
         template <typename T, template <typename> class U>
-        static std::vector<int> splitRangeAll(const U<T>& arr, int numTask, int taskId) {
+        static auto splitRangeAll(const U<T>& container, int numTask) {
             std::vector<typename U<T>::const_iterator> ranges;
-            ranges.resize(numTask*2);
+            ranges.resize(numTask+1);
+
+            auto iter = container.begin();
+            int taskSize = getTaskSize(container.size(), numTask);
 
             for (auto i = 0; i < numTask; i++) {
-                splitRange(arr, numTask, i, ranges[i*2], ranges[i*2+1]);
+                count = 0;
+                ranges[i] = iter;
+                for (; iter != container.end(); iter++) {
+                    count++;
+                    if (count > taskSize) {
+                        break;
+                    }
+                }
             }
-            return std::move(ranges); 
+            ranges[numTask] = container.end();
+            return ranges; 
         }
 
-        static int getSegement(int dataSize) {
-            return 10;
+        static auto splitRangeAll(U<T>::iterator& begin, U<T>::iterator& end, int dataSize, int numTask) {
+            std::vector<typename U<T>::const_iterator> ranges;
+            ranges.resize(numTask+1);
+
+            auto iter = begin;
+            int taskSize = getTaskSize(dataSize, numTask);
+
+            for (auto i = 0; i < numTask; i++) {
+                count = 0;
+                ranges[i] = iter;
+                for (; iter.End(); iter++) {
+                    count++;
+                    if (count > taskSize) {
+                        break;
+                    }
+                }
+            }
+            ranges[numTask] = end;
+            return ranges; 
+        }
+
+        static int getTaskSize(int dataSize, int numTask) {
+            return taskSize = (dataSize + numTask - 1) / numTask;
+        }
+
+        static int calcTaskNumber(int dataSize) {
+            return 8;
         }
     };
 
@@ -54,8 +92,15 @@ namespace utility {
     template <typename F>
     class mThreadHelper;
 
-    class ArrayTaskHelper {
+
+    /// Task helper for array or other c++ style containers that are traversable.
+    /// All are static members.
+    class TaskHelper {
     public:
+        /// interface for array-style types such as c-style array and c++ std::vector and std::array. 
+        /// using index to traverse pointwise 
+        /// require: container.size()
+        /// require: container::iterator      
 
         template <typename T, template <typename> class U, typename F, typename... Ts>
         static auto map(F&& mapFunc, const U<T>& vec, int dataSize, int numTask, Ts... args) {
@@ -68,137 +113,135 @@ namespace utility {
 
         template <typename U, typename V, typename F, typename... Ts>
         static void map(F&& mapFunc, const U& vec, V& retvec, int dataSize, int numTask, Ts... args) {
-            mapMImpl([&mapFunc, &vec, &retvec](int frIdx, int toIdx, Ts... args) {
-                for (int i = frIdx; i < toIdx; i++) 
+            mapImpl([&mapFunc, &vec, &retvec](int fr, int to, Ts... args) {
+                for (int i = fr; i < to; i++) 
                     retvec[i] = mapFunc(vec[i], args...);
             }, ArrayMTHelper::splitIndexAll(dataSize, numTask), args...);
         }
 
-        // reduceFunc :: T -> T -> T
-        template <typename U, typename F>
-        static auto reduce(F&& reduceFunc, const U& vec, int dataSize, int numTask) {
-            return reduceMImpl([&reducefunc, &vec](const U& vec, int frIdx, int toIdx){
-                T ret_seg(init_value);
-                for (int i = frIdx; i < toIdx; i++) 
+        /// reduceFunc :: T -> T -> T
+        template <typename U, typename F, typename RetType>
+        static auto reduce(F&& reduceFunc, const U& vec, int dataSize, int numTask, RetType init_value) {
+            std::vector<typename RetType> retvec;
+            retvec.resize(ranges.size());
+            return reduceImpl([&reducefunc, &vec](int fr, int to){
+                RetType ret_seg(init_value);
+                for (int i = fr; i < to; i++) 
                     ret_seg = reduceFunc(vec[i], ret_seg);
+                return ret_seg;      
+            }, [&reducefunc, &retvec](int fr, int to){
+                RetType ret_seg = retvec[fr];
+                for (int i = fr+1; i < to; i++) 
+                    ret_seg = reduceFunc(retvec[i], ret_seg);
                 return ret_seg;      
             }, ArrayMTHelper::splitIndexAll(dataSize, numTask), args...);
         }
 
-        // mapFunc :: T -> T2
-        // reduceFunc :: T2 -> T2 -> T2
-        template <typename U, typename F1, typename F2, typename... Ts>
-        static auto reduce(F1&& reduceFunc1, F2&& reduceFunc2, U& vec, int dataSize, int numTask, Ts... args) {
-            using RetType = decltype(mapFunc(vec[0]));
-
-            return std::move(reduceMImpl([&reduceFunc1, &reduceFunc2, &vec](int fr, int to, Ts... args) {
-                RetType ret_seg;
-                for (int i = fr; i < to; i++) {
-                    ret_seg = reduceFunc1(vec[i], ret_seg, args...);
-                }
-                return ret_seg;
-            }, [&reduceFunc2, &vec](const std::vector<RetType>& vec, int fr, int to){
-                RetType ret;
-                for (int i = fr; i < to; i++) {
-                    ret = reduceFunc(vec[i], ret);
-                }
-                return ret;
-            }, ArrayMTHelper::splitIndexAll(dataSize, numTask), args...));
-        }
-
-        // mapFunc :: T -> T2
-        // reduceFunc :: T2 -> T2 -> T2
+        /// mapFunc :: T -> T2
+        /// reduceFunc :: T2 -> T2 -> T2
         template <typename U, typename F1, typename F2, typename... Ts>
         static auto mapReduce(F1&& mapFunc, F2&& reduceFunc, U& vec, int dataSize, int numTask, Ts... args) {
             using RetType = decltype(mapFunc(vec[0]));
+            std::vector<typename RetType> retvec;
+            retvec.resize(ranges.size());
 
-            return std::move(reduceMImpl([&mapFunc, &reduceFunc, &vec](int fr, int to, Ts... args) {
-                RetType ret_seg;
-                for (int i = fr; i < to; i++) {
+            return std::move(reduceImpl([&mapFunc, &reduceFunc, &vec](int fr, int to, Ts... args) {
+                RetType ret_seg = mapFunc(vec[i], args...);
+                for (int i = fr+1; i < to; i++) {
                     ret_seg = reduceFunc(mapFunc(vec[i], args...), ret_seg);
                 }
                 return ret_seg;
-            }, [&reduceFunc](const std::vector<RetType>& vec, int fr, int to){
-                RetType ret;
-                for (int i = fr; i < to; i++) {
-                    ret = reduceFunc(vec[i], ret);
+            }, [&reduceFunc, &retvec](int fr, int to){
+                RetType ret = retvec[fr];
+                for (int i = fr+1; i < to; i++) {
+                    ret = reduceFunc(retvec[i], ret);
+                }
+                return ret;
+            }, ArrayMTHelper::splitIndexAll(dataSize, numTask), args...));
+        }
+
+        // TODO.
+        template <typename U, typename F1, typenameF F2, typename... Ts>
+        static auto mapReduce(F1&& mapFunc, F2&& reduceFunc, const U& vec, V& tmpVec, RetType ret, int dataSize, int numTask, Ts... args) {
+            std::vector<typename RetType> retvec;
+            retvec.resize(ranges.size());
+
+            return std::move(reduceImpl([&mapFunc, &reduceFunc, &vec](int fr, int to, Ts... args) {
+                RetType ret_seg(vec[fr]);
+                for (int i = fr+1; i < to; i++) {
+                    ret_seg = reduceFunc(mapFunc(vec[i], args...), ret_seg);
+                }
+                return ret_seg;
+            }, [&reduceFunc, &retvec](int fr, int to){
+                RetType ret(vec[fr]);
+                for (int i = fr+1; i < to; i++) {
+                    ret = reduceFunc(retvec[i], ret);
                 }
                 return ret;
             }, ArrayMTHelper::splitIndexAll(dataSize, numTask), args...));
         }
 
     public:
-        // interface for c++-style container
-        // implemented: container.size()
-        // implemented: container::iterator      
+        /// interface for c++-style containers such as std::list
+        /// using iterator to traverse pointwise 
+        /// require: container.size()
+        /// require: container::iterator      
 
-        // mapFunc :: T -> T2
-        // reduceFunc :: T2 -> T2 -> T2
-        template <typename U, typename F, typename... Ts>
-        static auto mapC(F&& mapFunc, U& container, int dataSize, int numTask, Ts... args) {
-            return mapC(mapFunc, ArrayMTHelper::splitRangeAll(container, dataSize, numTask), args...));
-        }
-
-        template <typename U, typename R, typename F, typename... Ts>
+        /// mapFunc :: [](*iter) -> void
+        template <typename R, typename F, typename... Ts>
         static auto mapC(F&& mapFunc, const R& range, Ts... args) {        
-            using iterator = U::iterator;
-
-            return std::move(mapMImpl([&mapFunc](Iterator fr, Iterator to, Ts... args) {
+            using iterator = decltype(range[0]);
+            mapImpl([&mapFunc](iterator fr, iterator to, Ts... args) {
                 for (auto iter = fr; iter != to; iter++) {
                     mapFunc((*iter), args...);
                 }
-            }));
+            }, range, args...);
         }
 
-        // mapFunc :: T -> T2
-        // reduceFunc :: T2 -> T2 -> T2
-        template <typename U, typename F1, typename F2, typename... Ts>
-        static auto reduceC(F1&& mapFunc, F2&& reduceFunc, U& container, int dataSize, int numTask, Ts... args) {
-            return reduceC(mapFunc, reduceFunc, ArrayMTHelper::splitRangeAll(container, dataSize, numTask), args...));
-        }
+        /// reduceFunc1 :: [](*iter, RetType) -> RetType
+        /// reduceFunc2 :: (RetType, RetType) -> RetType
+        template <typename R, typename F1, typename F2, typename RetType>
+        static auto reduceC(F1&& reduceFunc1, F2&& reduceFunc2, const R& range, RetType init_value) {        
+            using iterator = decltype(range[0]);
+            std::vector<typename RetType> retvec;
+            retvec.resize(ranges.size());
 
-        template <typename U, typename R, typename F1, typename F2, typename... Ts>
-        static auto reduceC(F1&& reduceFunc1, F2&& reduceFunc, const R& range, Ts... args) {        
-            using iterator = U::iterator;
-            using RetType = decltype(mapFunc(vec.begin()));
-
-            return std::move(reduceImpl([&reduceFunc1, &reduceFunc, &container](Iterator fr, Iterator to, Ts... args) {
-                RetType ret_seg;
+            return std::move(reduceImpl([&reduceFunc1, &reduceFunc2, &init_value](iterator fr, iterator to) {
+                RetType ret_seg(init_value);
                 for (auto iter = fr; iter != to; iter++) {
-                    ret_seg = reduceFunc1((*iter), ret_seg, args...));
+                    ret_seg = reduceFunc1(*iter, ret_seg);
                 }
                 return ret_seg;
-            }, [&reduceFunc](const std::vector<RetType>& vec, int fr, int to){
-                RetType ret;
-                for (int i = fr; i < to; i++) {
-                    ret = reduceFunc(vec[i], ret);
+            }, [&reduceFunc2, &retvec, &init_value](int fr, int to){
+                RetType ret(init_value);
+                for (int i = fr+1; i < to; i++) {
+                    ret = reduceFunc2(retvec[i], ret);
                 }
                 return ret;
-            }, range, args...));
+            }, range));
         }
 
-        // mapFunc :: T -> T2
-        // reduceFunc :: T2 -> T2 -> T2
-        template <typename U, typename F1, typename F2, typename... Ts>
-        static auto mapReduceC(F1&& mapFunc, F2&& reduceFunc, U& container, int dataSize, int numTask, Ts... args) {
-            return mapReduceC(mapFunc, reduceFunc, ArrayMTHelper::splitRangeAll(container, dataSize, numTask), args...));
-        }
-
-        template <typename U, typename R, typename F1, typename F2, typename... Ts>
+        /// mapFunc :: [](*iter) -> RetType
+        /// reduceFunc :: (RetType, RetType) -> RetType
+        template <typename R, typename F1, typename F2, typename... Ts>
         static auto mapReduceC(F1&& mapFunc, F2&& reduceFunc, const R& range, Ts... args) {        
-            using iterator = U::iterator;
-            using RetType = decltype(mapFunc(vec.begin()));
+            using iterator = decltype(range[0]);
+            using RetType = decltype(mapFunc(*range[0], args...));
+            std::vector<typename RetType> retvec;
+            retvec.resize(ranges.size());
 
-            return std::move(reduceImpl([&mapFunc, &reduceFunc, &container](Iterator fr, Iterator to, Ts... args) {
-                RetType ret_seg;
+            return std::move(reduceImpl([&mapFunc, &reduceFunc, &container](iterator fr, iterator to, Ts... args) {
+                RetType ret_seg = mapFunc(*fr, args...);
                 for (auto iter = fr; iter != to; iter++) {
-                    ret_seg = reduceFunc(mapFunc((*iter), args...), ret_seg);
+                    if (iter != fr) {
+                        ret_seg = reduceFunc(mapFunc((*iter), args...), ret_seg);
+                    }
                 }
                 return ret_seg;
-            }, [&reduceFunc](const std::vector<RetType>& vec, int fr, int to){
-                RetType ret;
-                for (int i = fr; i < to; i++) {
-                    ret = reduceFunc(vec[i], ret);
+            }, [&reduceFunc, &retvec](int fr, int to){
+                RetType ret = retvec[fr];
+                for (int i = fr+1; i < to; i++) {
+                    ret = reduceFunc(retvec[i], ret);
                 }
                 return ret;
             }, range, args...));
@@ -206,39 +249,170 @@ namespace utility {
 
     public:
 
-        template <typename F, typename U, typename ...Ts>
-        static void mapMImpl(F&& mapFunc, const U& ranges, Ts... args) {
-            for (int i = 0; i < ranges.size(); i++) {
-                [auto fr, auto to] = ranges[i];
+        /// interface for any data that could be traversed pointwise by index. 
+        /// using index to traverse 
+
+        /// mapFunc :: [this](int fr, int to, Ts...) -> void
+        template <typename U, typename V, typename F, typename... Ts>
+        static void mapM(F&& mapFunc, int dataSize, int numTask, Ts... args) {
+            mapImpl([&mapFunc](int fr, int to, Ts... args) {
+                for (int i = fr; i < to; i++) 
+                    mapFunc(i, args...);
+            }, ArrayMTHelper::splitIndexAll(dataSize, numTask), args...);
+        }
+
+        /// mapFunc :: T -> T2
+        /// reduceFunc :: T2 -> T2 -> T2
+        template <typename U, typename F1, typename F2, typename RetType>
+        static auto reduceM(F1&& reduceFunc1, F2&& reduceFunc2, U& vec, int dataSize, int numTask, RetType init_value) {
+            std::vector<typename RetType> retvec;
+            retvec.resize(ranges.size());
+
+            return std::move(reduceImpl([&reduceFunc1, &reduceFunc2, &vec](int fr, int to, Ts... args) {
+                RetType ret_seg = vec[fr];
+                for (int i = fr+1; i < to; i++) {
+                    ret_seg = reduceFunc1(vec[i], ret_seg, args...);
+                }
+                return ret_seg;
+            }, [&reduceFunc2, &retvec](int fr, int to){
+                RetType ret = retvec[fr];
+                for (int i = fr+1; i < to; i++) {
+                    ret = reduceFunc2(retvec[i], ret);
+                }
+                return ret;
+            }, ArrayMTHelper::splitIndexAll(dataSize, numTask), args...));
+        }
+
+        /// mapFunc :: T -> T2
+        /// reduceFunc :: T2 -> T2 -> T2
+        template <typename F1, typename F2, typename... Ts>
+        static auto mapReduceM(F1&& mapFunc, F2&& reduceFunc, int dataSize, int numTask, Ts... args) {
+            using RetType = decltype(mapFunc(vec[0]));
+            std::vector<typename RetType> retvec;
+            retvec.resize(ranges.size());
+
+            return std::move(reduceImpl([&mapFunc, &reduceFunc](int fr, int to, Ts... args) {
+                RetType ret_seg = mapFunc(fr, args...);
+                for (int i = fr+1; i < to; i++) {
+                    ret_seg = reduceFunc(mapFunc(i, args...), ret_seg);
+                }
+                return ret_seg;
+            }, [&reduceFunc, &retvec](int fr, int to){
+                RetType ret = retvec[fr];
+                for (int i = fr+1; i < to; i++) {
+                    ret = reduceFunc(retvec[i], ret);
+                }
+                return ret;
+            }, ArrayMTHelper::splitIndexAll(dataSize, numTask), args...));
+        }
+
+        template <typename F1, typename F2, typename... Ts>
+        static auto runM(F1&& mapFunc, F2&& reduceFunc, int dataSize, int numTask, Ts... args) {
+            using RetType = decltype(mapFunc(vec[0]));
+            std::vector<typename RetType> retvec;
+            retvec.resize(ranges.size());
+
+            return std::move(runImpl([&](auto threaid){[&mapFunc, &reduceFunc](int fr, int to, Ts... args) {
+                RetType ret_seg = mapFunc(threadid)(fr, args...);
+                for (int i = fr+1; i < to; i++) {
+                    ret_seg = reduceFunc(mapFunc(threaid)(i, args...), ret_seg);
+                }
+                return ret_seg;
+            }}, [&reduceFunc, &retvec](int fr, int to){
+                RetType ret = retvec[fr];
+                for (int i = fr+1; i < to; i++) {
+                    ret = reduceFunc(retvec[i], ret);
+                }
+                return ret;
+            }, ArrayMTHelper::splitIndexAll(dataSize, numTask), args...));
+        }
+
+    public:
+        /// interface for any data that could be traversed in ranges. 
+
+        template <typename R, typename F, typename ...Ts>
+        static void mapR(F&& mapFunc, const R& ranges, Ts... args) {
+            return mapImpl(mapFunc, ranges, args...);
+        }
+
+        template <typename R, typename F, typename... Ts>
+        static auto reduceR(F&& reduceFunc, const R& ranges) {
+            return reduceImpl(reduceFunc, reduceFunc, ranges);
+        }
+
+        template <typename R, typename F1, typename F2, typename... Ts>
+        static auto reduceR(F1&& reduceFunc1, F2&& reduceFunc2, const R& ranges, Ts... args) {
+            return reduceImpl(reduceFunc1, reduceFunc2, ranges, args...);
+        }
+
+        template <typename R, typename F1, typename F2, typename... Ts>
+        static auto runR(F1&& func, F2&& reduceFunc, const R& ranges, Ts... args) {
+            return runImpl(func, reduceFunc, ranges, args...);
+        }
+
+    public:
+        /// Implementation
+
+        template <typename R, typename F, typename ...Ts>
+        static void mapImpl(F&& mapFunc, const R& ranges, Ts... args) {
+            for (int i = 0; i < ranges.size() - 1; i++) {
+                auto fr = ranges[i];
+                auto to = ranges[i+1];
                 solveThreadFunc([&, fr, to](){
                     mapFunc(fr, to, args...);
                 });
             }
+
+            // mapThreadImpl([&](auto i) {
+            //     return [&, i]() {
+            //         mapFunc(ranges[i], ranges[i+1], args..);
+            //     }
+            // }, ranges.size() - 1);
         }
 
-        // reduceFunc :: [T] -> T
-        template <typename F, typename U>
-        static auto reduceMImpl(F&& reduceFunc, const U& ranges) {
-            return reduceMImpl(reduceFunc, reduceFunc, ranges);
+        template <typename F, typename ...Ts>
+        static void mapThreadImpl(F&& mapThreadFunc, int numTask) {
+            mapTask(mapThreadFunc, numTask);
+            waitAll();
         }
 
-        // mapFunc :: [this](int, int, Ts...) -> RetType
-        // reduceFunc :: RetType -> RetType -> RetType
-        template <typename F1, typename F2, typename U, typename... Ts>
-        static auto reduceMImpl(F1&& reduceFunc1, F2&& reduceFunc2, const U& ranges, Ts... args) {
-            using RetType = decltype(reduceFunc1(0, 1, args...));
+        template <typename F, typename ...Ts>
+        static void mapThreadImpl2(F&& mapThreadFunc, int numTask, Ts... args) {
+            taskQueue().addTasks(mapThreadFunc, numTask, args...);
+            taskQueue().waitAll();
+        }
 
-            std::vector<RetType> retvec;
-            retvec.resize(ranges.size());
-
-            for (int i = 0; i < ranges.size(); i++) {
-                [auto fr, auto to] = ranges[i];
+        /// reduceFunc1 :: [...](l, r, Ts...) -> RetType
+        /// reduceFunc2 :: [](const std::vector<retType>&, l, r) -> RetType 
+        template <typename R, typename F1, typename F2, typename... Ts>
+        static auto reduceImpl(F1&& reduceFunc1, F2&& reduceFunc2, const R& ranges, Ts... args) {
+            for (int i = 0; i < ranges.size() - 1; i++) {
+                auto fr = ranges[i];
+                auto to = ranges[i+1];
                 solveThreadFunc([&, fr, to](){
-                    retvec[i] = reduceFunc1(fr, to, args...);
+                    reduceFunc1(fr, to, args...);
                 });
-            }            
+            }
 
-            return reduceFunc2(retvec, 0, int(retvec.size()));
+            return reduceFunc2();
+
+            // return mapThreadImpl([&](auto i) {
+            //     return mapFunc(ranges[i], ranges[i+1], args..);
+            // }, reduceFunc2, ranges.size() - 1);
+        }
+
+        template <typename F1, typename F2, typename... Ts>
+        static auto reduceThreadImpl(F1&& reduceThreadFunc1, F2&& reduceFunc2, int numTask) {
+            mapTask(reduceThreadFunc1, numTask);
+            waitAll();
+            return reduceFunc2();            
+        }
+
+        template <typename F>
+        static auto mapTask(F&& func, uint numTask) {
+            for (uint taskid = 0; taskid < numTask; taskid++) {
+                addTask(func(taskid));
+            }
         }
 
     public:
@@ -246,10 +420,10 @@ namespace utility {
         class UseMTScope {
             UseMTScope(bool useMT = true) {
                 _useMT = useMT;
-                ArrayTaskHelper::setUseMT(useMT);
+                TaskHelper::setUseMT(useMT);
             }  
             ~UseMTScope() {
-                ArrayTaskHelper::setUseMT(_useMT);
+                TaskHelper::setUseMT(_useMT);
             }
 
             bool _useMT;
@@ -265,7 +439,7 @@ namespace utility {
 
         template <typename F>
         inline static void solveThreadFunc(F&& func) {
-            if (useMT) {
+            if (useMT()) {
                 mThreadHelper<F>::solveThreadFunc(func);
             } else {
                 sThreadHelper<F>::solveThreadFunc(func);

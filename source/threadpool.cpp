@@ -41,9 +41,9 @@ namespace utility {
                 _condvar.wait(ul, []{return true;});
                 while (true) {
                     std::unique_lock<std::mutex> ul(_mutex);
-                    _condvar.wait(ul, [this]{!_valid || !_queue.empty();});
+                    _condvar.wait(ul, [this]{!_valid || !_taskQueue.empty();});
 
-                    fetchTask()();
+                    _taskQueue.getTask()();
                 }
             });
         }
@@ -51,37 +51,19 @@ namespace utility {
         _condvar.notify_all();
     }
 
-    void ThreadPool::addTask(Task&& task) {
-        std::lock_guard<std::mutex> lock(_mutex);
-        _queue.push(task);
-    }
-
-    void ThreadPool::addTasks(const std::vector<Task>& tasklist) {
-        std::lock_guard<std::mutex> lock(_mutex);
-        for (auto task : tasklist)
-            _queue.push(task);   
-    }
-
-    ThreadPool::Task ThreadPool::fetchTask() {
-        auto task = std::move(_queue.front());
-        _queue.pop();
-
-        return task;
-    }
-
     void ThreadPool::runTask(Task&& task) {
-        addTask(task);
+        _taskQueue.addTask(task);
         waitAll();
     }
 
     void ThreadPool::runTasks(const std::vector<Task>& tasks) {
-        addTasks(tasks);
+        _taskQueue.addTasks(tasks);
         waitAll();
     }
 
     void ThreadPool::waitAll() {
         std::unique_lock<std::mutex> ul(_mutex);
-        _condvar.wait(ul, [this]{ return _queue.empty(); });
+        _condvar.wait(ul, [this]{ return _taskQueue.empty(); });
     }
 
     static ThreadPool impl(ThreadPool::GetConcurrency());

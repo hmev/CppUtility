@@ -2,7 +2,7 @@
 
 namespace utility {
 
-    bool ArrayTaskHelper::s_useMT = false;
+    bool TaskHelper::s_useMT = false;
     
     template class sThreadHelper<std::function<void()>>;
     template class sThreadHelper<std::function<void(void*)>>;
