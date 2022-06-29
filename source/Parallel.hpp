@@ -467,4 +467,37 @@ namespace utility {
             threadpool().runTask(func);
         }
     };
+
+    class TaskHelper{
+    public:
+        template <typename F, typename ...Ts>
+        static void Map(F&& mapFunc, int dataSize, int numTask, Ts...args) {
+
+        }
+
+        template <typename I, typename F, typename ...Ts>
+        static void Map(F&& mapFunc, const std::vector<I>& ranges, Ts... args) {
+
+        }
+
+        template <typename F, typename ...Ts>
+        static void MapThread(F&& mapThreadFunc, int dataSize, int numTask, Ts... args) {
+
+        }
+
+        template <typename I, typename F, typename ...Ts>
+        static void MapThreadImpl(F&& mapThreadFunc, const std::vector<I>& ranges, Ts... args) {
+
+        }
+
+        template <typename F, typename ... Ts>
+        static void MapReduce(F1&& mapFunc, F2&& reduceFunc, int dataSize, int numTask, Ts...args) {
+
+        }
+
+        template <typename I, typename F1, typename F2, typename ... Ts>
+        static void MapReduceImpl(F1&& mapFunc, F2&& reduceFunc, const std::vector<I>& ranges, Ts...args) {
+            
+        }
+    }
 }
